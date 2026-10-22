@@ -50,6 +50,16 @@ interface Particle {
   life: number;
 }
 
+interface FloatingText {
+  x: number;
+  y: number;
+  text: string;
+  color: string;
+  glow: string;
+  alpha: number;
+  scale: number;
+}
+
 const COLOR_MAP: Record<BrickColorType, { fill: string; stroke: string; glow: string }> = {
   red: { fill: "#EF4444", stroke: "#DC2626", glow: "rgba(239, 68, 68, 0.6)" },
   orange: { fill: "#F97316", stroke: "#EA580C", glow: "rgba(249, 115, 22, 0.6)" },
@@ -106,6 +116,7 @@ export default function GamePage() {
 
   const bricksRef = useRef<Brick[]>([]);
   const particlesRef = useRef<Particle[]>([]);
+  const floatingTextsRef = useRef<FloatingText[]>([]);
   const keysRef = useRef<{ left: boolean; right: boolean }>({ left: false, right: false });
   const touchStartRef = useRef<{ x: number; paddleX: number } | null>(null);
 
@@ -211,6 +222,26 @@ export default function GamePage() {
     }
   };
 
+  // 빨간 벽돌 파괴 시 NICE!, AWESOME!, GOOD! 팝업 플로팅 텍스트 생성
+  const spawnFloatingText = (x: number, y: number) => {
+    const textOptions = [
+      { text: "NICE!", color: "#facc15", glow: "rgba(250, 204, 21, 0.9)" },      // 밝은 노랑
+      { text: "AWESOME!", color: "#f43f5e", glow: "rgba(244, 63, 94, 0.9)" },    // 강렬한 로즈
+      { text: "GOOD!", color: "#38bdf8", glow: "rgba(56, 189, 248, 0.9)" },      // 청량한 스카이블루
+    ];
+    const chosen = textOptions[Math.floor(Math.random() * textOptions.length)];
+
+    floatingTextsRef.current.push({
+      x,
+      y: y - 10,
+      text: chosen.text,
+      color: chosen.color,
+      glow: chosen.glow,
+      alpha: 1,
+      scale: 0.6,
+    });
+  };
+
   // 디바이스 판별 함수 (모바일 여부 확인)
   const isMobileDevice = () => {
     if (typeof window === "undefined") return false;
@@ -290,6 +321,7 @@ export default function GamePage() {
     initializeBricks();
     resetBallAndPaddle();
     particlesRef.current = [];
+    floatingTextsRef.current = [];
     setLives(3);
     setRedBrokenCount(0);
     setElapsedTime(0);
@@ -627,10 +659,13 @@ export default function GamePage() {
               ball.dy = -ball.dy;
             }
 
-            // 빨간 벽돌 카운트 처리
+            // 빨간 벽돌 카운트 처리 및 플로팅 텍스트
             if (b.colorType === "red") {
               const newRedCount = gameStateRef.current.redBrokenCount + 1;
               setRedBrokenCount(newRedCount);
+
+              // 화면 중앙 또는 벽돌 위치에 랜덤 팝업 텍스트 생성 (NICE!, AWESOME!, GOOD!)
+              spawnFloatingText(b.x + b.w / 2, b.y + b.h / 2);
 
               // 빨간 벽돌 3개 달성 시 미션 완료
               if (newRedCount >= 3) {
@@ -749,6 +784,37 @@ export default function GamePage() {
       ctx.arc(ball.x - 2.5, ball.y - 2.5, ball.radius * 0.35, 0, Math.PI * 2);
       ctx.fill();
       ctx.restore();
+
+      // 8. 빨간 벽돌 파괴 팝업 플로팅 텍스트 렌더링 (NICE!, AWESOME!, GOOD!)
+      for (let i = floatingTextsRef.current.length - 1; i >= 0; i--) {
+        const ft = floatingTextsRef.current[i];
+        ft.y -= 1.2; // 위로 서서히 부유
+        ft.scale = Math.min(1.4, ft.scale + 0.08); // 팝업 확대
+        ft.alpha -= 0.018; // 서서히 페이드아웃
+
+        if (ft.alpha <= 0) {
+          floatingTextsRef.current.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, ft.alpha);
+        ctx.font = `bold ${Math.round(20 * ft.scale)}px 'DungGeunMo', 'Press Start 2P', monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+
+        // 외곽선 섀도우 (레트로 팝 효과)
+        ctx.shadowColor = ft.glow;
+        ctx.shadowBlur = 16;
+        ctx.strokeStyle = "#000000";
+        ctx.lineWidth = 4;
+        ctx.strokeText(ft.text, ft.x, ft.y);
+
+        // 메인 글자 채우기
+        ctx.fillStyle = ft.color;
+        ctx.fillText(ft.text, ft.x, ft.y);
+        ctx.restore();
+      }
 
       animId = requestAnimationFrame(loop);
     };
